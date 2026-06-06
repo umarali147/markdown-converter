@@ -47,6 +47,9 @@ export default function ConverterShell() {
   const [richInput, setRichInput] = useState('');
   const [activeTab, setActiveTab] = useState<OutputTab>('rich');
   const [hydrated, setHydrated] = useState(false);
+  const [split, setSplit] = useState(50); // input pane width, % (desktop only)
+  const [isDragging, setIsDragging] = useState(false);
+  const panesRef = useRef<HTMLDivElement>(null);
   const restored = useRef(false);
 
   // Restore from localStorage once, fall back to sample content.
@@ -60,6 +63,7 @@ export default function ConverterShell() {
         setDirection(s.direction ?? 'md-to-rich');
         setMdInput(s.mdInput ?? '');
         setRichInput(s.richInput ?? '');
+        if (typeof s.split === 'number') setSplit(Math.min(75, Math.max(25, s.split)));
       } else {
         setMdInput(SAMPLE);
       }
@@ -73,11 +77,33 @@ export default function ConverterShell() {
   useEffect(() => {
     if (!hydrated) return;
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ direction, mdInput, richInput }));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ direction, mdInput, richInput, split }));
     } catch {
       /* storage full or unavailable — non-fatal */
     }
-  }, [direction, mdInput, richInput, hydrated]);
+  }, [direction, mdInput, richInput, split, hydrated]);
+
+  // Pane resize: track pointer while dragging the divider (desktop layout).
+  useEffect(() => {
+    if (!isDragging) return;
+    const onMove = (e: PointerEvent) => {
+      const rect = panesRef.current?.getBoundingClientRect();
+      if (!rect || rect.width === 0) return;
+      const pct = ((e.clientX - rect.left) / rect.width) * 100;
+      setSplit(Math.min(75, Math.max(25, pct)));
+    };
+    const onUp = () => setIsDragging(false);
+    document.body.style.userSelect = 'none';
+    document.body.style.cursor = 'col-resize';
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    return () => {
+      document.body.style.userSelect = '';
+      document.body.style.cursor = '';
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+    };
+  }, [isDragging]);
 
   const debouncedMd = useDebounced(mdInput, 150);
   const debouncedRich = useDebounced(richInput, 150);
@@ -153,9 +179,16 @@ export default function ConverterShell() {
       </div>
 
       {/* Panes */}
-      <div className="relative flex flex-col gap-4 lg:flex-row lg:items-stretch">
+      <div
+        ref={panesRef}
+        style={{ '--split': `${split}%` } as React.CSSProperties}
+        className="flex flex-col gap-4 lg:h-[calc(100vh-280px)] lg:min-h-[480px] lg:flex-row lg:items-stretch lg:gap-0"
+      >
         {/* Input pane */}
-        <section className={paneClass} aria-label="Input">
+        <section
+          className={`${paneClass} lg:grow-0 lg:shrink-0 lg:basis-[var(--split)]`}
+          aria-label="Input"
+        >
           <div className={paneHeader}>
             <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">
               {direction === 'md-to-rich' ? 'Markdown In' : 'Rich Text In'}
@@ -170,13 +203,33 @@ export default function ConverterShell() {
           </div>
         </section>
 
-        {/* Swap button — floats between panes */}
-        <div className="flex items-center justify-center lg:absolute lg:left-1/2 lg:top-1/2 lg:z-10 lg:-translate-x-1/2 lg:-translate-y-1/2">
-          <SwapButton onSwap={handleSwap} direction={direction} />
+        {/* Divider — swap button + drag handle to resize panes (desktop) */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Drag to resize panes"
+          title="Drag to resize"
+          onPointerDown={(e) => {
+            if (window.matchMedia('(min-width: 64rem)').matches) {
+              e.preventDefault();
+              setIsDragging(true);
+            }
+          }}
+          onDoubleClick={() => setSplit(50)}
+          className="group flex items-center justify-center gap-2 lg:w-8 lg:cursor-col-resize lg:flex-col lg:touch-none"
+        >
+          <div onPointerDown={(e) => e.stopPropagation()}>
+            <SwapButton onSwap={handleSwap} direction={direction} />
+          </div>
+          <div
+            className={`hidden h-16 w-1 rounded-full transition-colors lg:block ${
+              isDragging ? 'bg-blue-500' : 'bg-gray-200 group-hover:bg-blue-400 dark:bg-gray-700'
+            }`}
+          />
         </div>
 
         {/* Output pane */}
-        <section className={paneClass} aria-label="Output">
+        <section className={`${paneClass} lg:min-w-0 lg:flex-1`} aria-label="Output">
           <div className={paneHeader}>
             {direction === 'md-to-rich' ? (
               <>

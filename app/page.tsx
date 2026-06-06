@@ -2,7 +2,7 @@ import ConverterShell from '@/components/ConverterShell';
 
 export default function Home() {
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col px-4 py-6 sm:px-6">
+    <div className="mx-auto flex min-h-screen w-full max-w-[1700px] flex-col px-4 py-6 sm:px-6">
       <header className="mb-6">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-2xl font-bold tracking-tight text-gray-900 dark:text-white">
